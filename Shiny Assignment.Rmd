@@ -1,0 +1,506 @@
+---
+title: "Shiny Assignment"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-11-15"
+---
+# Shiny Assignment
+
+## Exercise 2.3.5:
+
+### Question 1
+
+```{r}
+library(shiny)
+
+ui <- fluidPage(
+  verbatimTextOutput("summary_output")
+)
+
+server <- function(input, output, session) {
+  output$summary_output <- renderPrint({
+    summary(mtcars)
+  })
+}
+
+shinyApp(ui, server)
+```
+
+### Question 2:
+```{r}
+ui <- fluidPage(
+  textOutput("greeting_output")
+)
+
+server <- function(input, output, session) {
+  output$greeting_output <- renderText({
+    "Good morning!"
+  })
+}
+
+shinyApp(ui, server)
+```
+
+### Question 3:
+
+```{r}
+ui <- fluidPage(
+  verbatimTextOutput("ttest_output")
+)
+
+server <- function(input, output, session) {
+  output$ttest_output <- renderPrint({
+    t.test(1:5, 2:6)
+  })
+}
+
+shinyApp(ui, server)
+```
+
+### Question 4:
+
+```{r}
+ui <- fluidPage(
+  verbatimTextOutput("lm_output")
+)
+
+server <- function(input, output, session) {
+  output$lm_output <- renderPrint({
+    str(lm(mpg ~ wt, data = mtcars))
+  })
+}
+
+shinyApp(ui, server)
+```
+
+## Exercise 3.3.6:
+
+### Question 1:
+
+server1 <- function(input, output, server) {
+  input$greeting <- renderText(paste0("Hello ", name))
+}
+```{r}
+ui <- fluidPage(
+  textInput("name", "What's your name?"),
+  textOutput("greeting")
+)
+
+server1 <- function(input, output, server) {
+  output$greeting <- renderText(paste0("Hello ", input$name))
+}
+shinyApp(ui, server1)
+```
+
+server2 <- function(input, output, server) {
+  greeting <- paste0("Hello ", input$name)
+  output$greeting <- renderText(greeting)
+}
+
+```{r}
+ui <- fluidPage(
+  textInput("name", "What's your name?"),
+  textOutput("greeting")
+)
+server2 <- function(input, output, server) {
+  greeting <- reactive({
+    paste("Hello ", input$name)})
+  output$greeting <- renderText(greeting())
+}
+shinyApp(ui, server2)
+
+```
+
+server3 <- function(input, output, server) {
+  output$greting <- paste0("Hello", input$name)
+}
+
+```{r}
+ui <- fluidPage(
+  textInput("name", "What's your name?"),
+  textOutput("greeting")
+)
+server3 <- function(input, output, server) {
+  output$greeting <- renderText(paste0("Hello ", input$name))
+}
+shinyApp(ui, server3)
+```
+
+### Question 2:
+
+
+server1 <- function(input, output, session) {
+  c <- reactive(input$a + input$b)
+  e <- reactive(c() + input$d)
+  output$f <- renderText(e())
+}
+
+(input$a,input$b) ----- c
+(c,input$d) ------ e
+e ------ output$f
+
+server2 <- function(input, output, session) {
+  x <- reactive(input$x1 + input$x2 + input$x3)
+  y <- reactive(input$y1 + input$y2)
+  output$z <- renderText(x() / y())
+}
+
+(input$x1,input$x2,input$x3)----x
+(input$y1,input$y2) -----y
+(x,y) ---- output$z
+
+server3 <- function(input, output, session) {
+  d <- reactive(c() ^ input$d)
+  a <- reactive(input$a * 10)
+  c <- reactive(b() / input$c)
+  b <- reactive(a() + input$b)
+}
+
+(input$d, c) ------ d
+(input$a) ---- a
+(b, input$c) ---- c
+(a,b) ----- b
+
+### Question 3:
+ Why will this code fail?
+
+var <- reactive(df[[input$var]])
+range <- reactive(range(var(), na.rm = TRUE))
+Why are range() and var() bad names for reactive?
+
+Because range() and var() are also function in R which is not unique for reactive!
+
+
+## Exercise 4.8:
+
+### Question 1:
+
+```{r}
+library(vroom)
+library(tidyverse)
+
+# Directory setup and data download
+dir.create("neiss_data")
+download_file <- function(name) {
+  base_url <- "https://raw.github.com/hadley/mastering-shiny/main/neiss/"
+  download.file(paste0(base_url, name), paste0("neiss_data/", name), quiet = TRUE)
+}
+download_file("injuries.tsv.gz")
+download_file("population.tsv")
+download_file("products.tsv")
+
+# Load data
+injuries <- vroom::vroom("neiss_data/injuries.tsv.gz")
+products <- vroom::vroom("neiss_data/products.tsv")
+population <- vroom::vroom("neiss_data/population.tsv")
+
+# Helper function to summarize data
+get_top_rows <- function(data, variable, rows = 5) {
+  data |>
+    mutate({{ variable }} := fct_lump(fct_infreq({{ variable }}), n = rows)) |>
+    group_by({{ variable }}) |>
+    summarise(n = sum(weight))
+}
+
+# Set product codes for UI choices
+product_choices <- setNames(products$prod_code, products$title)
+
+# UI layout
+ui <- fluidPage(
+  fluidRow(
+    column(8, selectInput("product", "Select Product", choices = product_choices, width = "100%")),
+    column(2, selectInput("y_axis", "Y Axis", choices = c("rate", "count")))
+  ),
+  fluidRow(
+    column(4, tableOutput("diag_table")),
+    column(4, tableOutput("body_table")),
+    column(4, tableOutput("location_table"))
+  ),
+  fluidRow(
+    column(12, plotOutput("age_sex_plot"))
+  ),
+  fluidRow(
+    column(2, actionButton("tell_story", "Tell a Story")),
+    column(10, textOutput("narrative_text"))
+  )
+)
+
+# Server logic
+server <- function(input, output, session) {
+  filter_data <- reactive({
+    injuries |> filter(prod_code == input$product)
+  })
+
+  output$diag_table <- renderTable({
+    get_top_rows(filter_data(), diag)
+  })
+
+  output$body_table <- renderTable({
+    get_top_rows(filter_data(), body_part)
+  })
+
+  output$location_table <- renderTable({
+    get_top_rows(filter_data(), location)
+  })
+
+  create_summary <- reactive({
+    filter_data() |>
+      count(age, sex, wt = weight) |>
+      left_join(population, by = c("age", "sex")) |>
+      mutate(rate = n / population * 1e4)
+  })
+
+  output$age_sex_plot <- renderPlot({
+    summary <- create_summary()
+    if (input$y_axis == "count") {
+      ggplot(summary, aes(age, n, colour = sex)) +
+        geom_line() +
+        labs(y = "Number of Injuries")
+    } else {
+      ggplot(summary, aes(age, rate, colour = sex)) +
+        geom_line(na.rm = TRUE) +
+        labs(y = "Injury Rate per 10,000 People")
+    }
+  })
+
+  pick_narrative <- eventReactive(input$tell_story, {
+    filter_data() |> pull(narrative) |> sample(1)
+  })
+
+  output$narrative_text <- renderText({
+    pick_narrative()
+  })
+}
+
+# Run the app
+shinyApp(ui, server)
+
+```
+
+
+### Question 2:
+
+```{r}
+ui <- fluidPage(
+  fluidRow(
+    column(8, selectInput("product", "Select Product",
+                          choices = setNames(products$prod_code, products$title),
+                          width = "100%")),
+    column(2, checkboxInput("flip_order", "Flip Order", value = FALSE))
+  ),
+  fluidRow(
+    column(4, tableOutput("diag_table"))
+  )
+)
+
+server <- function(input, output, session) {
+  filtered_data <- reactive({
+    injuries |> filter(prod_code == input$product)
+  })
+
+  output$diag_table <- renderTable({
+    if (input$flip_order) {
+      # Flipped Order
+      filtered_data() |>
+        mutate(diag = fct_infreq(fct_lump(diag, n = 5))) |>
+        group_by(diag) |>
+        summarise(count = sum(weight))
+    } else {
+      # Original Order
+      filtered_data() |>
+        mutate(diag = fct_lump(fct_infreq(diag), n = 5)) |>
+        group_by(diag) |>
+        summarise(count = sum(weight))
+    }
+  })
+}
+
+shinyApp(ui, server)
+
+```
+
+### Question 3:
+
+```{r}
+library(shiny)
+library(vroom)
+library(tidyverse)
+
+# Load data
+injuries <- vroom::vroom("neiss_data/injuries.tsv.gz")
+products <- vroom::vroom("neiss_data/products.tsv")
+population <- vroom::vroom("neiss_data/population.tsv")
+
+# Helper function to summarize data
+summarize_top <- function(data, variable, rows = 5) {
+  data |>
+    mutate({{ variable }} := fct_lump(fct_infreq({{ variable }}), n = rows)) |>
+    group_by({{ variable }}) |>
+    summarise(count = sum(weight))
+}
+
+# UI
+ui <- fluidPage(
+  fluidRow(
+    column(8, selectInput("product", "Select Product",
+                          choices = setNames(products$prod_code, products$title),
+                          width = "100%")),
+    column(2, numericInput("rows", "Rows to Display", value = 5, min = 1, max = 20))
+  ),
+  fluidRow(
+    column(4, tableOutput("diagnosis_table")),
+    column(4, tableOutput("body_table")),
+    column(4, tableOutput("location_table"))
+  ),
+  fluidRow(column(12, plotOutput("age_sex_plot")))
+)
+
+# Server
+server <- function(input, output, session) {
+  filtered_data <- reactive({
+    injuries |> filter(prod_code == input$product)
+  })
+
+  output$diagnosis_table <- renderTable({
+    summarize_top(filtered_data(), diag, rows = input$rows)
+  })
+
+  output$body_table <- renderTable({
+    summarize_top(filtered_data(), body_part, rows = input$rows)
+  })
+
+  output$location_table <- renderTable({
+    summarize_top(filtered_data(), location, rows = input$rows)
+  })
+
+  summary_plot <- reactive({
+    filtered_data() |>
+      count(age, sex, wt = weight) |>
+      left_join(population, by = c("age", "sex")) |>
+      mutate(rate = n / population * 1e4)
+  })
+
+  output$age_sex_plot <- renderPlot({
+    ggplot(summary_plot(), aes(age, rate, color = sex)) +
+      geom_line() +
+      labs(y = "Injury Rate per 10,000 People")
+  })
+}
+
+# Run the app
+shinyApp(ui, server)
+
+```
+
+### Question 4:
+
+```{r}
+library(shiny)
+library(vroom)
+library(tidyverse)
+
+# Load data
+injuries <- vroom::vroom("neiss_data/injuries.tsv.gz")
+products <- vroom::vroom("neiss_data/products.tsv")
+population <- vroom::vroom("neiss_data/population.tsv")
+
+# Helper function to summarize data
+summarize_top <- function(data, variable, rows = 5) {
+  data |>
+    mutate({{ variable }} := fct_lump(fct_infreq({{ variable }}), n = rows)) |>
+    group_by({{ variable }}) |>
+    summarise(count = sum(weight))
+}
+
+# UI
+ui <- fluidPage(
+  fluidRow(
+    column(8, selectInput("product", "Select Product",
+                          choices = setNames(products$prod_code, products$title),
+                          width = "100%")),
+    column(2, numericInput("rows", "Rows to Display", value = 5, min = 1, max = 20))
+  ),
+  fluidRow(
+    column(4, tableOutput("diagnosis_table")),
+    column(4, tableOutput("body_table")),
+    column(4, tableOutput("location_table"))
+  ),
+  fluidRow(
+    column(12, plotOutput("age_sex_plot"))
+  ),
+  fluidRow(
+    column(2, actionButton("prev", "Previous")),
+    column(2, actionButton("next", "Next")),
+    column(8, textOutput("narrative_output"))
+  )
+)
+
+# Server
+server <- function(input, output, session) {
+  filtered_data <- reactive({
+    injuries |> filter(prod_code == input$product)
+  })
+
+  output$diagnosis_table <- renderTable({
+    summarize_top(filtered_data(), diag, rows = input$rows)
+  })
+
+  output$body_table <- renderTable({
+    summarize_top(filtered_data(), body_part, rows = input$rows)
+  })
+
+  output$location_table <- renderTable({
+    summarize_top(filtered_data(), location, rows = input$rows)
+  })
+
+  summary_plot <- reactive({
+    filtered_data() |>
+      count(age, sex, wt = weight) |>
+      left_join(population, by = c("age", "sex")) |>
+      mutate(rate = n / population * 1e4)
+  })
+
+  output$age_sex_plot <- renderPlot({
+    ggplot(summary_plot(), aes(age, rate, color = sex)) +
+      geom_line() +
+      labs(y = "Injury Rate per 10,000 People")
+  })
+
+  # Reactive value for narrative index
+  narrative_index <- reactiveVal(1)
+
+  # Update index when Next button is clicked
+  observeEvent(input$next, {
+    new_index <- narrative_index() + 1
+    if (new_index > nrow(filtered_data())) {
+      new_index <- 1  # Wrap around to the first narrative
+    }
+    narrative_index(new_index)
+  })
+
+  # Update index when Previous button is clicked
+  observeEvent(input$prev, {
+    new_index <- narrative_index() - 1
+    if (new_index < 1) {
+      new_index <- nrow(filtered_data())  # Wrap around to the last narrative
+    }
+    narrative_index(new_index)
+  })
+
+  # Display the current narrative
+  output$narrative_output <- renderText({
+    selected_data <- filtered_data()
+    if (nrow(selected_data) == 0) {
+      "No narratives available for the selected product."
+    } else {
+      selected_data$narrative[narrative_index()]
+    }
+  })
+}
+
+# Run the app
+shinyApp(ui, server)
+
+```
+
